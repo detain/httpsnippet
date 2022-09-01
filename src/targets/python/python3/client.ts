@@ -9,24 +9,35 @@
  */
 
 import { CodeBuilder } from '../../../helpers/code-builder';
+import { escapeForDoubleQuotes } from '../../../helpers/escape';
 import { Client } from '../../targets';
 
-export const python3: Client = {
+export interface Python3Options {
+  insecureSkipVerify?: boolean;
+}
+
+export const python3: Client<Python3Options> = {
   info: {
     key: 'python3',
     title: 'http.client',
     link: 'https://docs.python.org/3/library/http.client.html',
     description: 'Python3 HTTP Client',
   },
-  convert: ({ uriObj: { path, protocol, host }, postData, allHeaders, method }) => {
+  convert: ({ uriObj: { path, protocol, host }, postData, allHeaders, method }, options = {}) => {
+    const { insecureSkipVerify = false } = options;
+
     const { push, blank, join } = new CodeBuilder();
     // Start Request
     push('import http.client');
+    if (insecureSkipVerify) {
+      push('import ssl');
+    }
     blank();
 
     // Check which protocol to be used for the client connection
     if (protocol === 'https:') {
-      push(`conn = http.client.HTTPSConnection("${host}")`);
+      const sslContext = insecureSkipVerify ? ', context = ssl._create_unverified_context()' : '';
+      push(`conn = http.client.HTTPSConnection("${host}"${sslContext})`);
       blank();
     } else {
       push(`conn = http.client.HTTPConnection("${host}")`);
@@ -45,7 +56,7 @@ export const python3: Client = {
     const headerCount = Object.keys(headers).length;
     if (headerCount === 1) {
       for (const header in headers) {
-        push(`headers = { '${header}': "${headers[header]}" }`);
+        push(`headers = { '${header}': "${escapeForDoubleQuotes(headers[header])}" }`);
         blank();
       }
     } else if (headerCount > 1) {
@@ -55,13 +66,13 @@ export const python3: Client = {
 
       for (const header in headers) {
         if (count++ !== headerCount) {
-          push(`    '${header}': "${headers[header]}",`);
+          push(`    '${header}': "${escapeForDoubleQuotes(headers[header])}",`);
         } else {
-          push(`    '${header}': "${headers[header]}"`);
+          push(`    '${header}': "${escapeForDoubleQuotes(headers[header])}"`);
         }
       }
 
-      push('    }');
+      push('}');
       blank();
     }
 

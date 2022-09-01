@@ -1,5 +1,6 @@
 /**
  * @description
+ *
  * HTTP code snippet generator for the Shell using cURL.
  *
  * @author
@@ -9,16 +10,44 @@
  */
 
 import { CodeBuilder } from '../../../helpers/code-builder';
-import { getHeaderName } from '../../../helpers/headers';
+import { getHeader, getHeaderName, isMimeTypeJSON } from '../../../helpers/headers';
 import { quote } from '../../../helpers/shell';
 import { Client } from '../../targets';
 
 export interface CurlOptions {
-  short?: boolean;
   binary?: boolean;
   globOff?: boolean;
   indent?: string | false;
+  insecureSkipVerify?: boolean;
+  prettifyJson?: boolean;
+  short?: boolean;
 }
+
+/**
+ * This is a const record with keys that correspond to the long names and values that correspond to the short names for cURL arguments.
+ */
+const params = {
+  'http1.0': '0',
+  'url ': '',
+  cookie: 'b',
+  data: 'd',
+  form: 'F',
+  globoff: 'g',
+  header: 'H',
+  insecure: 'k',
+  request: 'X',
+} as const;
+
+const getArg = (short: boolean) => (longName: keyof typeof params) => {
+  if (short) {
+    const shortName = params[longName];
+    if (!shortName) {
+      return '';
+    }
+    return `-${shortName}`;
+  }
+  return `--${longName}`;
+};
 
 export const curl: Client<CurlOptions> = {
   info: {
@@ -27,32 +56,43 @@ export const curl: Client<CurlOptions> = {
     link: 'http://curl.haxx.se/',
     description: 'cURL is a command line tool and library for transferring data with URL syntax',
   },
-  convert: ({ fullUrl, method, httpVersion, headersObj, allHeaders, postData }, options) => {
-    const opts = {
-      indent: '  ',
-      short: false,
-      binary: false,
-      globOff: false,
-      ...options,
-    };
+  convert: ({ fullUrl, method, httpVersion, headersObj, allHeaders, postData }, options = {}) => {
+    const {
+      binary = false,
+      globOff = false,
+      indent = '  ',
+      insecureSkipVerify = false,
+      prettifyJson = false,
+      short = false,
+    } = options;
+
     const { push, join } = new CodeBuilder({
-      ...(typeof opts.indent === 'string' ? { indent: opts.indent } : {}),
-      join: opts.indent !== false ? ` \\\n${opts.indent}` : ' ',
+      ...(typeof indent === 'string' ? { indent: indent } : {}),
+      join: indent !== false ? ` \\\n${indent}` : ' ',
     });
 
-    const globOption = opts.short ? '-g' : '--globoff';
-    const requestOption = opts.short ? '-X' : '--request';
+    const arg = getArg(short);
+
     let formattedUrl = quote(fullUrl);
 
-    push(`curl ${requestOption} ${method}`);
-    if (opts.globOff) {
+    push(`curl ${arg('request')} ${method}`);
+    if (globOff) {
       formattedUrl = unescape(formattedUrl);
-      push(globOption);
+      push(arg('globoff'));
     }
-    push(`${opts.short ? '' : '--url '}${formattedUrl}`);
+    push(`${arg('url ')}${formattedUrl}`);
+
+    if (insecureSkipVerify) {
+      push(arg('insecure'));
+    }
 
     if (httpVersion === 'HTTP/1.0') {
-      push(opts.short ? '-0' : '--http1.0');
+      push(arg('http1.0'));
+    }
+
+    if (getHeader(allHeaders, 'accept-encoding')) {
+      // note: there is no shorthand for this cURL option
+      push('--compressed');
     }
 
     // if multipart form data, we want to remove the boundary
@@ -78,11 +118,11 @@ export const curl: Client<CurlOptions> = {
       .sort()
       .forEach(key => {
         const header = `${key}: ${headersObj[key]}`;
-        push(`${opts.short ? '-H' : '--header'} ${quote(header)}`);
+        push(`${arg('header')} ${quote(header)}`);
       });
 
     if (allHeaders.cookie) {
-      push(`${opts.short ? '-b' : '--cookie'} ${quote(allHeaders.cookie as string)}`);
+      push(`${arg('cookie')} ${quote(allHeaders.cookie as string)}`);
     }
 
     // construct post params
@@ -96,37 +136,63 @@ export const curl: Client<CurlOptions> = {
             post = `${param.name}=${param.value}`;
           }
 
-          push(`${opts.short ? '-F' : '--form'} ${quote(post)}`);
+          push(`${arg('form')} ${quote(post)}`);
         });
         break;
 
       case 'application/x-www-form-urlencoded':
         if (postData.params) {
           postData.params.forEach(param => {
-            push(
-              `${opts.binary ? '--data-binary' : opts.short ? '-d' : '--data'} ${quote(
-                `${param.name}=${param.value}`,
-              )}`,
-            );
+            const unencoded = param.name;
+            const encoded = encodeURIComponent(param.name);
+            const needsEncoding = encoded !== unencoded;
+            const name = needsEncoding ? encoded : unencoded;
+            const flag = binary ? '--data-binary' : `--data${needsEncoding ? '-urlencode' : ''}`;
+            push(`${flag} ${quote(`${name}=${param.value}`)}`);
           });
         } else {
-          push(
-            `${opts.binary ? '--data-binary' : opts.short ? '-d' : '--data'} ${quote(
-              postData.text,
-            )}`,
-          );
+          push(`${binary ? '--data-binary' : arg('data')} ${quote(postData.text)}`);
         }
         break;
 
-      default:
+      default: {
         // raw request body
-        if (postData.text) {
-          push(
-            `${opts.binary ? '--data-binary' : opts.short ? '-d' : '--data'} ${quote(
-              postData.text,
-            )}`,
-          );
+        if (!postData.text) {
+          break;
         }
+
+        const flag = binary ? '--data-binary' : arg('data');
+
+        let builtPayload = false;
+        // If we're dealing with a JSON variant, and our payload is JSON let's make it look a little nicer.
+        if (isMimeTypeJSON(postData.mimeType)) {
+          // If our postData is less than 20 characters, let's keep it all on one line so as to not make the snippet overly lengthy.
+          const couldBeJSON = postData.text.length > 2;
+          if (couldBeJSON && prettifyJson) {
+            try {
+              const jsonPayload = JSON.parse(postData.text);
+
+              // If the JSON object has a single quote we should prepare it inside of a HEREDOC because the single quote in something like `string's` can't be escaped when used with `--data`.
+              //
+              // Basically this boils down to `--data @- <<EOF...EOF` vs `--data '...'`.
+              builtPayload = true;
+
+              const payload = JSON.stringify(jsonPayload, undefined, indent as string);
+              if (postData.text.indexOf("'") > 0) {
+                push(`${flag} @- <<EOF\n${payload}\nEOF`);
+              } else {
+                push(`${flag} '\n${payload}\n'`);
+              }
+            } catch (err) {
+              // no-op
+            }
+          }
+        }
+
+        if (!builtPayload) {
+          push(`${flag} ${quote(postData.text)}`);
+        }
+      }
     }
 
     return join();

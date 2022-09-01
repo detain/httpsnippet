@@ -1,23 +1,25 @@
 import { CodeBuilder } from '../../../helpers/code-builder';
+import { escapeForSingleQuotes } from '../../../helpers/escape';
 import { Client } from '../../targets';
 
-export const native: Client = {
+export interface RubyNativeOptions {
+  insecureSkipVerify?: boolean;
+}
+
+export const native: Client<RubyNativeOptions> = {
   info: {
     key: 'native',
     title: 'net::http',
     link: 'http://ruby-doc.org/stdlib-2.2.1/libdoc/net/http/rdoc/Net/HTTP.html',
     description: 'Ruby HTTP client',
   },
-  convert: ({ uriObj, method: rawMethod, fullUrl, postData, allHeaders }) => {
+  convert: ({ uriObj, method: rawMethod, fullUrl, postData, allHeaders }, options = {}) => {
+    const { insecureSkipVerify = false } = options;
+
     const { push, blank, join } = new CodeBuilder();
 
     push("require 'uri'");
     push("require 'net/http'");
-
-    if (uriObj.protocol === 'https:') {
-      push("require 'openssl'");
-    }
-
     blank();
 
     // To support custom methods we check for the supported methods
@@ -53,7 +55,9 @@ export const native: Client = {
 
     if (uriObj.protocol === 'https:') {
       push('http.use_ssl = true');
-      push('http.verify_mode = OpenSSL::SSL::VERIFY_NONE');
+      if (insecureSkipVerify) {
+        push('http.verify_mode = OpenSSL::SSL::VERIFY_NONE');
+      }
     }
 
     blank();
@@ -62,7 +66,7 @@ export const native: Client = {
     const headers = Object.keys(allHeaders);
     if (headers.length) {
       headers.forEach(key => {
-        push(`request["${key}"] = '${allHeaders[key]}'`);
+        push(`request["${key}"] = '${escapeForSingleQuotes(allHeaders[key])}'`);
       });
     }
 

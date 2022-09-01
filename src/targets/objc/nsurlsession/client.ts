@@ -53,21 +53,24 @@ export const nsurlsession: Client<NsurlsessionOptions> = {
 
       switch (postData.mimeType) {
         case 'application/x-www-form-urlencoded':
-          if (postData.params) {
+          if (postData.params?.length) {
             // By appending parameters one by one in the resulting snippet,
             // we make it easier for the user to edit it according to his or her needs after pasting.
             // The user can just add/remove lines adding/removing body parameters.
             blank();
 
+            const [head, ...tail] = postData.params;
             push(
-              `NSMutableData *postData = [[NSMutableData alloc] initWithData:[@"${postData.params[0].name}=${postData.params[0].value}" dataUsingEncoding:NSUTF8StringEncoding]];`,
+              `NSMutableData *postData = [[NSMutableData alloc] initWithData:[@"${head.name}=${head.value}" dataUsingEncoding:NSUTF8StringEncoding]];`,
             );
 
-            for (let i = 1, len = postData.params.length; i < len; i++) {
+            tail.forEach(({ name, value }) => {
               push(
-                `[postData appendData:[@"&${postData.params[i].name}=${postData.params[i].value}" dataUsingEncoding:NSUTF8StringEncoding]];`,
+                `[postData appendData:[@"&${name}=${value}" dataUsingEncoding:NSUTF8StringEncoding]];`,
               );
-            }
+            });
+          } else {
+            req.hasBody = false;
           }
           break;
 

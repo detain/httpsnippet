@@ -1,10 +1,12 @@
 const fetch = require('node-fetch');
 
-let url = 'http://mockbin.com/har';
+const url = 'http://mockbin.com/har';
+const options = {method: 'GET'};
 
-let options = {method: 'GET'};
-
-fetch(url, options)
-  .then(res => res.json())
-  .then(json => console.log(json))
-  .catch(err => console.error('error:' + err));
+try {
+  const response = await fetch(url, options);
+  const data = await response.json();
+  console.log(data);
+} catch (error) {
+  console.error(error);
+}

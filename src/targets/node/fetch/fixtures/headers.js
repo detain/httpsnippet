@@ -1,13 +1,19 @@
 const fetch = require('node-fetch');
 
-let url = 'http://mockbin.com/har';
-
-let options = {
+const url = 'http://mockbin.com/har';
+const options = {
   method: 'GET',
-  headers: {accept: 'application/json', 'x-foo': 'Bar', 'x-bar': 'Foo'}
+  headers: {
+    accept: 'application/json',
+    'x-foo': 'Bar',
+    'quoted-value': '"quoted" \'string\''
+  }
 };
 
-fetch(url, options)
-  .then(res => res.json())
-  .then(json => console.log(json))
-  .catch(err => console.error('error:' + err));
+try {
+  const response = await fetch(url, options);
+  const data = await response.json();
+  console.log(data);
+} catch (error) {
+  console.error(error);
+}

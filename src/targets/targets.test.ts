@@ -1,9 +1,10 @@
-import { readdirSync, readFileSync } from 'fs';
+import { readdirSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 
+import short from '../fixtures/requests/short.json';
 import { availableTargets, extname } from '../helpers/utils';
 import { HTTPSnippet, Request } from '../httpsnippet';
-import { ClientId, isClient, isTarget, TargetId } from './targets';
+import { addTarget, addTargetClient, Client, ClientId, isClient, isTarget, Target, TargetId, targets } from './targets';
 
 const expectedBasePath = ['src', 'fixtures', 'requests'];
 
@@ -32,6 +33,14 @@ const fixtureFilter: string[] = [
   // 'multipart-file',
 ];
 
+/**
+ * This is useful when you want to make a change and overwrite it for every fixture.
+ * Basically a snapshot reset.
+ *
+ * Switch to `true` in debug mode to put into effect.
+ */
+const OVERWRITE_EVERYTHING = Boolean(process.env.OVERWRITE_EVERYTHING) || false;
+
 const testFilter =
   <T>(property: keyof T, list: T[keyof T][]) =>
   (item: T) =>
@@ -43,7 +52,7 @@ availableTargets()
     describe(`${title} Request Validation`, () => {
       clients.filter(testFilter('key', clientFilter)).forEach(({ key: clientId }) => {
         fixtures.filter(testFilter(0, fixtureFilter)).forEach(([fixture, request]) => {
-          const basePath = path.join(
+          const expectedPath = path.join(
             'src',
             'targets',
             targetId,
@@ -52,16 +61,16 @@ availableTargets()
             `${fixture}${extname(targetId)}`,
           );
           try {
-            const expected = readFileSync(basePath).toString();
-            if (expected === '<MISSING>') {
-              console.log(`known missing test for ${targetId}:${clientId} "${fixture}"`);
+            const expected = readFileSync(expectedPath).toString();
+            const { convert } = new HTTPSnippet(request);
+            const result = convert(targetId, clientId); //?
+
+            if (OVERWRITE_EVERYTHING && result) {
+              writeFileSync(expectedPath, String(result));
               return;
             }
 
             it(`${clientId} request should match fixture for "${fixture}.json"`, () => {
-              const { convert } = new HTTPSnippet(request);
-              const result = convert(targetId, clientId); //?
-
               expect(result).toStrictEqual(expected);
             });
           } catch (error) {
@@ -235,5 +244,59 @@ describe('isClient', () => {
         convert: () => '',
       }),
     ).toBeTruthy();
+  });
+});
+
+describe('addTarget', () => {
+  it('should add a new custom target', async () => {
+    const { fetch: fetchClient } = await import('./node/fetch/client');
+
+    const deno: Target = {
+      info: {
+        // @ts-expect-error intentionally incorrect
+        key: 'deno',
+        title: 'Deno',
+        extname: '.js',
+        default: 'fetch',
+      },
+      clientsById: {
+        fetch: fetchClient,
+      },
+    };
+
+    addTarget(deno);
+
+    // @ts-expect-error intentionally incorrect
+    expect(targets.deno).toBeDefined();
+    // @ts-expect-error intentionally incorrect
+    expect(targets.deno).toStrictEqual(deno);
+
+    // @ts-expect-error intentionally incorrect
+    delete targets.deno;
+  });
+});
+
+describe('addTargetClient', () => {
+  it('should add a new custom target', () => {
+    const customClient: Client = {
+      info: {
+        key: 'custom',
+        title: 'Custom HTTP library',
+        link: 'https://example.com',
+        description: 'A custom HTTP library',
+      },
+      convert: () => {
+        return 'This was generated from a custom client.';
+      },
+    };
+
+    addTargetClient('node', customClient);
+
+    const { convert } = new HTTPSnippet(short as Request);
+    const result = convert('node', 'custom');
+
+    expect(result).toBe('This was generated from a custom client.');
+
+    delete targets.node.clientsById.custom;
   });
 });

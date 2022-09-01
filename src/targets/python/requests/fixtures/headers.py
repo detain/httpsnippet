@@ -5,9 +5,9 @@ url = "http://mockbin.com/har"
 headers = {
     "accept": "application/json",
     "x-foo": "Bar",
-    "x-bar": "Foo"
+    "quoted-value": "\"quoted\" 'string'"
 }
 
-response = requests.request("GET", url, headers=headers)
+response = requests.get(url, headers=headers)
 
-print(response.text)
+print(response.json())
