@@ -1,17 +1,24 @@
 import { map as eventStreamMap } from 'event-stream';
-import FormData from 'form-data';
+import FormData from 'form-data/lib/form_data';
 import { Param, PostDataCommon, Request as NpmHarRequest } from 'har-format';
+import { validateRequest } from 'har-validator-compiled';
 import { stringify as queryStringify } from 'querystring';
 import { format as urlFormat, parse as urlParse, UrlWithParsedQuery } from 'url';
 
 import { formDataIterator, isBlob } from './helpers/form-data';
-import { validateHarRequest } from './helpers/har-validator';
 import { getHeaderName } from './helpers/headers';
 import { ReducedHelperObject, reducer } from './helpers/reducer';
 import { ClientId, TargetId, targets } from './targets/targets';
 
 export { availableTargets, extname } from './helpers/utils';
 export { addTarget, addTargetClient } from './targets/targets';
+
+// We're implementing the logic for which FormData object to use, ourselves.
+// This allows us to use the native FormData object in the browser and the `form-data` module in Node,
+// instead of relying on the package entrypoint to handle that.
+const resolveFormData =
+  // @ts-expect-error — we're only using window.FormData if it exists
+  typeof window !== 'undefined' && window.FormData ? window.FormData : FormData;
 
 const DEBUG_MODE = false;
 
@@ -53,7 +60,7 @@ interface Entry {
   request: Partial<HarRequest>;
 }
 
-interface HarEntry {
+export interface HarEntry {
   log: {
     version: string;
     creator: {
@@ -64,7 +71,7 @@ interface HarEntry {
   };
 }
 
-const isHarEntry = (value: any): value is HarEntry =>
+export const isHarEntry = (value: any): value is HarEntry =>
   typeof value === 'object' &&
   'log' in value &&
   typeof value.log === 'object' &&
@@ -100,13 +107,13 @@ export class HTTPSnippet {
         cookies: [],
         httpVersion: 'HTTP/1.1',
         queryString: [],
-        postData: {
+        ...request,
+        postData: request?.postData || {
           mimeType: request.postData?.mimeType || 'application/octet-stream',
         },
-        ...request,
       };
 
-      if (validateHarRequest(req)) {
+      if (validateRequest(req)) {
         this.requests.push(this.prepare(req));
       }
     });
@@ -164,7 +171,7 @@ export class HTTPSnippet {
       request.allHeaders.cookie = cookies.join('; ');
     }
 
-    switch (request.postData.mimeType) {
+    switch (request?.postData.mimeType) {
       case 'multipart/mixed':
       case 'multipart/related':
       case 'multipart/form-data':
@@ -174,7 +181,7 @@ export class HTTPSnippet {
         request.postData.mimeType = 'multipart/form-data';
 
         if (request.postData?.params) {
-          const form = new FormData();
+          const form = new resolveFormData();
 
           // The `form-data` module returns one of two things: a native FormData object, or its own polyfill
           // Since the polyfill does not support the full API of the native FormData object, when this library is running in a browser environment it'll fail on two things:
@@ -186,7 +193,6 @@ export class HTTPSnippet {
           // Since the native FormData object is iterable, we easily detect what version of `form-data` we're working with here to allow `multipart/form-data` requests to be compiled under both browser and Node environments.
           //
           // This hack is pretty awful but it's the only way we can use this library in the browser as if we code this against just the native FormData object, we can't polyfill that back into Node because Blob and File objects, which something like `formdata-polyfill` requires, don't exist there.
-          // @ts-expect-error TODO
           const isNativeFormData = typeof form[Symbol.iterator] === 'function';
 
           // TODO: THIS ABSOLUTELY MUST BE REMOVED.
@@ -194,7 +200,6 @@ export class HTTPSnippet {
           // easter egg
           const boundary = '---011000010111000001101001'; // this is binary for "api". yep.
           if (!isNativeFormData) {
-            // @ts-expect-error THIS IS WRONG.  VERY WRONG.
             form._boundary = boundary;
           }
 
@@ -205,16 +210,13 @@ export class HTTPSnippet {
 
             if (isNativeFormData) {
               if (isBlob(value)) {
-                // @ts-expect-error TODO
                 form.append(name, value, filename);
               } else {
                 form.append(name, value);
               }
             } else {
               form.append(name, value, {
-                // @ts-expect-error TODO
                 filename,
-                // @ts-expect-error TODO
                 contentType: param.contentType || null,
               });
             }

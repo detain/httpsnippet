@@ -4,6 +4,7 @@ import { CodeBuilderOptions } from '../helpers/code-builder';
 import { Request } from '../httpsnippet';
 import { c } from './c/target';
 import { clojure } from './clojure/target';
+import { crystal } from './crystal/target';
 import { csharp } from './csharp/target';
 import { go } from './go/target';
 import { http } from './http/target';
@@ -18,6 +19,7 @@ import { powershell } from './powershell/target';
 import { python } from './python/target';
 import { r } from './r/target';
 import { ruby } from './ruby/target';
+import { rust } from './rust/target';
 import { shell } from './shell/target';
 import { swift } from './swift/target';
 
@@ -59,6 +61,7 @@ export interface Target {
 export const targets = {
   c,
   clojure,
+  crystal,
   csharp,
   go,
   http,
@@ -73,6 +76,7 @@ export const targets = {
   python,
   r,
   ruby,
+  rust,
   shell,
   swift,
 };

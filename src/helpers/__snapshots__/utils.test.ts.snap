@@ -33,6 +33,20 @@ Array [
   Object {
     "clients": Array [
       Object {
+        "description": "Crystal HTTP client",
+        "key": "native",
+        "link": "https://crystal-lang.org/api/master/HTTP/Client.html",
+        "title": "http::client",
+      },
+    ],
+    "default": "native",
+    "extname": ".cr",
+    "key": "crystal",
+    "title": "Crystal",
+  },
+  Object {
+    "clients": Array [
+      Object {
         "description": ".NET Standard HTTP Client",
         "key": "httpclient",
         "link": "https://docs.microsoft.com/en-us/dotnet/api/system.net.http.httpclient",
@@ -316,11 +330,31 @@ Array [
         "link": "http://ruby-doc.org/stdlib-2.2.1/libdoc/net/http/rdoc/Net/HTTP.html",
         "title": "net::http",
       },
+      Object {
+        "description": "Faraday HTTP client",
+        "key": "faraday",
+        "link": "https://github.com/lostisland/faraday",
+        "title": "faraday",
+      },
     ],
     "default": "native",
     "extname": ".rb",
     "key": "ruby",
     "title": "Ruby",
+  },
+  Object {
+    "clients": Array [
+      Object {
+        "description": "reqwest HTTP library",
+        "key": "reqwest",
+        "link": "https://docs.rs/reqwest/latest/reqwest/",
+        "title": "reqwest",
+      },
+    ],
+    "default": "reqwest",
+    "extname": ".rs",
+    "key": "rust",
+    "title": "Rust",
   },
   Object {
     "clients": Array [
